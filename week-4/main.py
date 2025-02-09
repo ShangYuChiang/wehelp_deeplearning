@@ -37,12 +37,12 @@ class LossFunctions(BaseFunction):
     @staticmethod
     def binary_cross_entropy(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         y_pred = np.clip(y_pred, 1e-15, 1 - 1e-15)  # Prevent log(0)
-        return -np.mean(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
+        return -np.sum(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
     
     @staticmethod
     def categorical_cross_entropy(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         y_pred = np.clip(y_pred, 1e-15, 1 - 1e-15)  # Prevent log(0)
-        return -np.mean(np.sum(y_true * np.log(y_pred), axis=-1))
+        return -np.sum(y_true * np.log(y_pred), axis=-1)
 
 class Network:
     def __init__(self, input_size: int, hidden_layer_sizes: list, output_size: int, 

@@ -4,6 +4,16 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 import torch
 from tqdm import tqdm
 
+class Normalization:
+    def __init__(self):
+        self.min_val = 0
+        self.max_val = 0
+    
+    def fit_transform(self, X):
+        self.min_val = np.min(X, axis=0)
+        self.max_val = np.max(X, axis=0)
+        return (X - self.min_val) / (self.max_val - self.min_val + 1e-8)
+
 class BaseFunction():
     def __repr__(self):
         return f"{self.__class__.__name__}()"
@@ -113,24 +123,86 @@ class NeuralNetwork:
             self.weights[i] -= learning_rate * self.dW[i]
             self.biases[i] -= learning_rate * self.db[i]
 
+# Load and preprocess Titanic dataset
+def load_titanic_data(filename):
+    df = pd.read_csv(filename)
+    df['Sex'] = df['Sex'].map({'female': 0, 'male': 1})
+    df.fillna({'Age': df['Age'].median()}, inplace=True)
+    df.fillna({'Fare': df['Fare'].median()}, inplace=True)
+    df.fillna({'Embarked': df['Embarked'].mode()[0]}, inplace=True)
+    df['Embarked'] = df['Embarked'].map({'C': 0, 'Q': 1, 'S': 2})
+    df.drop(columns=['Name', 'Ticket', 'Cabin'], inplace=True, errors='ignore')
+    return df[['Sex','Pclass','SibSp','Parch','Embarked','Survived']].values
+
 class TaskHandler:
     @staticmethod
-    def run_Task1(epoch: int = 1000):
-        pass
+    def run_Task1(epoch: int = 80):
+        df = pd.read_csv("gender-height-weight.csv")
+        le = LabelEncoder()
+        df['Gender'] = le.fit_transform(df['Gender'])
+        scaler_height = Normalization() #Std()
+        scaler_weight = Normalization() #Std()
+        df[['Height']] = scaler_height.fit_transform(df[['Height']])
+        df[['Weight']] = scaler_weight.fit_transform(df[['Weight']])
+
+        X = df[['Gender', 'Height']].to_numpy()
+        y = df['Weight'].to_numpy().reshape(-1, 1)
+
+        nn = NeuralNetwork(input_size=2, hidden_sizes=[2,2], output_size=1, hidden_activations=["linear","linear"], output_activation="sigmoid")
+        loss_fn = MSE()
+        learning_rate = 0.01
+        best_loss = float("inf")
+        no_improve_count = 0
+        patience = 20
+        # weight_mean = scaler_weight.mean
+        # weight_std = scaler_weight.std
+
+        # Training Procedure
+        print("----- Task1: Training Procedure -----")
+        for i in tqdm(range(epoch)):
+            loss_sum = 0
+            count = 0
+            for x, e in zip(X, y):
+                x = x.reshape(1, -1)
+                outputs = nn.forward(x)
+                loss = loss_fn.get_total_loss(e, outputs)
+                count +=1
+                loss_sum += loss
+                output_losses = loss_fn.get_output_losses(e, outputs)
+                nn.backward(output_losses)
+                nn.zero_grad(learning_rate)
+
+            avg_loss = loss_sum / count
+            no_improve_count = 0 if avg_loss < best_loss else no_improve_count + 1
+            best_loss = min(best_loss, avg_loss)
+            
+            if no_improve_count >= patience:
+                learning_rate *= 0.1
+                no_improve_count = 0
+                # print(f"Reducing learning rate to {learning_rate}")
+
+            rmse_scaled = np.sqrt(float(avg_loss) ) 
+            avg_weight_loss_pounds = rmse_scaled * (scaler_weight.max_val - scaler_weight.min_val)
+            # print(f'Average Loss: {avg_loss}, Approximate Weight in Pounds: {float(avg_weight_loss_pounds ) }')
+            tqdm.write(str(avg_weight_loss_pounds.iloc[0]))
+
+        # Evaluating Procedure
+        print("----- Task1: Evaluating Procedure -----")
+        loss_sum = 0
+        for x, e in zip(X, y):
+            x = x.reshape(1, -1)
+            outputs = nn.forward(x)
+            loss = loss_fn.get_total_loss(e, outputs)
+            loss_sum += loss
+        avg_loss = loss_sum / len(X)
+
+        rmse_scaled = np.sqrt(float(avg_loss) ) 
+        avg_weight_loss_pounds = rmse_scaled * (scaler_weight.max_val - scaler_weight.min_val)
+        print(f'Approximate Weight in Pounds: {avg_weight_loss_pounds.iloc[0]}')
+
 
     @staticmethod
     def run_Task2(epoch: int = 200):
-        # Load and preprocess Titanic dataset
-        def load_titanic_data(filename):
-            df = pd.read_csv(filename)
-            df['Sex'] = df['Sex'].map({'female': 0, 'male': 1})
-            df.fillna({'Age': df['Age'].median()}, inplace=True)
-            df.fillna({'Fare': df['Fare'].median()}, inplace=True)
-            df.fillna({'Embarked': df['Embarked'].mode()[0]}, inplace=True)
-            df['Embarked'] = df['Embarked'].map({'C': 0, 'Q': 1, 'S': 2})
-            df.drop(columns=['Name', 'Ticket', 'Cabin'], inplace=True, errors='ignore')
-            return df[['Sex','Pclass','SibSp','Parch','Embarked','Survived']].values
-
         # Load Data
         data = load_titanic_data("titanic.csv")
         X = data[:, :-1]
@@ -140,8 +212,6 @@ class TaskHandler:
         nn = NeuralNetwork(input_size=X.shape[1], hidden_sizes=[16,8], output_size=1, hidden_activations=["linear","linear"], output_activation="sigmoid")
         loss_fn = MSE()
         learning_rate = 0.001
-        best_acc, no_improve_count, patience = 0, 0, 20
-
         threshold = 0.5
 
         # Training Procedure
@@ -210,7 +280,61 @@ class TaskHandler:
 
 
 if __name__ == "__main__":
-    # TaskHandler.run_Task1()
+    TaskHandler.run_Task1()
     TaskHandler.run_Task2()
     TaskHandler.run_Task_pytroch()
 
+
+'''
+# Best Output
+----- Task1: Evaluating Procedure -----
+Approximate Weight in Pounds: 10.189534911611554
+----- Task2: Training Procedure -----
+100%|█████████████████████████████████████████████████████████████████████████████████████████████| 300/300 [00:23<00:00, 12.61it/s]
+----- Task2: Evaluating Procedure -----
+Model Accuracy: 81.03%
+----- Task3: Pytorch Procedure -----
+Shape of Tensor 1: torch.Size([2, 3])
+Dtype of Tensor 1: torch.int64
+
+Shape of Tensor 2: torch.Size([3, 4, 2])
+Tensor 2 (random float numbers on [0,1]):
+ tensor([[[0.0899, 0.3412],
+         [0.6493, 0.3738],
+         [0.2837, 0.7241],
+         [0.9650, 0.1401]],
+
+        [[0.1583, 0.6560],
+         [0.1117, 0.9621],
+         [0.2538, 0.7275],
+         [0.3511, 0.6707]],
+
+        [[0.8079, 0.1596],
+         [0.6133, 0.7422],
+         [0.3154, 0.7041],
+         [0.0145, 0.7037]]])
+
+Shape of Tensor 3: torch.Size([2, 1, 5])
+Tensor 3 (filled with 1s):
+ tensor([[[1., 1., 1., 1., 1.]],
+
+        [[1., 1., 1., 1., 1.]]])
+Matrix Multiplication Result:
+ tensor([[13],
+        [15]])
+Element-wise Multiplication Result:
+ tensor([[  5,   8],
+        [  4,   3],
+        [ -1, -15]])
+        [[0.1583, 0.6560],
+         [0.1117, 0.9621],
+         [0.2538, 0.7275],
+         [0.3511, 0.6707]],
+
+        [[0.8079, 0.1596],
+         [0.6133, 0.7422],
+         [0.3154, 0.7041],
+         [0.0145, 0.7037]]])
+
+
+'''
